@@ -270,7 +270,13 @@ async function loadRecipes() {
 function getFiltered() {
   let recs = RECIPES.slice();
   if (activeCat !== 'all') {
-    recs = recs.filter(r => r.cat === activeCat || (r.cats && r.cats.includes(activeCat)));
+    // Filter by primary category only. Recipes also carry a `cats` array of
+    // secondary tags, but matching against those made category chips show
+    // recipes whose main category was something else entirely (e.g. a
+    // meatball recipe tagged "meat" showing up under בשרים), and the chip's
+    // count badge (which only ever counted primary `cat`) didn't match what
+    // was actually displayed. Keeping both consistent on primary `cat`.
+    recs = recs.filter(r => r.cat === activeCat);
   }
   if (query) {
     const q = query.toLowerCase().trim();
