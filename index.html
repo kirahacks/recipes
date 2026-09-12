@@ -459,7 +459,16 @@ function toast(msg, kind = 'ok') {
 
 // Base64 UTF-8 helpers (GitHub Contents API uses base64)
 function utf8ToB64(s) {
-  return btoa(String.fromCharCode.apply(null, new TextEncoder().encode(s)));
+  const bytes = new TextEncoder().encode(s);
+  // Build the binary string in chunks — String.fromCharCode.apply with the whole
+  // array blows the argument limit ("Maximum call stack size exceeded") once
+  // recipes.json grows past a few tens of KB.
+  const CHUNK = 0x8000;
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(bin);
 }
 function b64ToUtf8(s) {
   // GitHub returns base64 with newlines
