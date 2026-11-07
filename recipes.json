@@ -23,8 +23,9 @@
     "id": 1,
     "title": "זפיקנקה",
     "date": "3/23/25",
-    "cat": "eggs_dairy",
+    "cat": "desserts",
     "cats": [
+      "desserts",
       "eggs_dairy"
     ],
     "src": {
