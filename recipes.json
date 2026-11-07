@@ -1593,8 +1593,9 @@
     "id": 80,
     "title": "בלינצ׳ס",
     "date": "5/24/26",
-    "cat": "desserts",
+    "cat": "c_mw5smprc",
     "cats": [
+      "c_mw5smprc",
       "desserts"
     ],
     "src": {
