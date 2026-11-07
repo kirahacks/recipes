@@ -42,6 +42,12 @@
     "color": "#7f1d1d"
   },
   {
+    "key": "c_mw5v78rn",
+    "label": "רטבים לבשר",
+    "emoji": "🍝",
+    "color": "#0d9488"
+  },
+  {
     "key": "fish",
     "label": "דגים",
     "emoji": "🐟",
@@ -60,12 +66,6 @@
     "color": "#facc15"
   },
   {
-    "key": "desserts",
-    "label": "עוגות וקינוחים",
-    "emoji": "🍰",
-    "color": "#db2777"
-  },
-  {
     "key": "c_mw5smprc",
     "label": "פינוקים של בוקר (וסופ\"ש)",
     "emoji": "🧇",
@@ -78,9 +78,9 @@
     "color": "#7e22ce"
   },
   {
-    "key": "c_mw5v78rn",
-    "label": "רטבים לבשר",
-    "emoji": "🍝",
-    "color": "#0d9488"
+    "key": "desserts",
+    "label": "עוגות וקינוחים",
+    "emoji": "🍰",
+    "color": "#db2777"
   }
 ]
