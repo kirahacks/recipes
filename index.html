@@ -126,13 +126,6 @@
   /* "Add category" chip + inline button next to the category select */
   .cat-chip.add-cat { display: none; border-style: dashed; border-color: var(--accent-soft); color: var(--accent); font-weight: 600; }
   .edit-mode .cat-chip.add-cat { display: inline-flex; }
-  .cat-chip .del-cat {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 18px; height: 18px; border-radius: 50%; font-size: 0.7rem;
-    background: rgba(220,38,38,0.12); color: var(--err); margin-inline-start: 2px;
-  }
-  .cat-chip .del-cat:hover { background: var(--err); color: white; }
-  .cat-chip.active .del-cat { background: rgba(255,255,255,0.3); color: white; }
   .emoji-picker { border: 1.5px solid var(--border); border-radius: 10px; padding: 8px; margin-top: 8px; background: var(--bg-soft); }
   .emoji-picker input { margin-bottom: 8px; }
   .emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 4px; max-height: 190px; overflow-y: auto; }
@@ -156,6 +149,16 @@
   }
   .order-list .handle { color: var(--ink-faint); font-size: 1.1rem; touch-action: none; padding: 4px 2px; }
   .order-list .o-label { flex: 1; font-weight: 600; }
+  .order-list .o-count { background: var(--bg-soft); color: var(--ink-soft); border-radius: 999px; padding: 0 8px; font-size: 0.8rem; font-weight: 600; }
+  .order-list .o-del {
+    width: 34px; height: 34px; border-radius: 8px; border: 1.5px solid transparent;
+    background: transparent; cursor: pointer; font-size: 1rem; padding: 0;
+    margin-inline-start: 10px; opacity: 0.75;
+  }
+  .order-list .o-del:hover { border-color: var(--err); background: #fef2f2; opacity: 1; }
+  .order-list .o-del.locked { opacity: 0.25; }
+  .order-list .o-del.locked:hover { border-color: transparent; background: transparent; }
+  .order-note { font-size: 0.85rem; color: var(--err); margin-top: 10px; min-height: 1.2em; }
   .select-row { display: flex; gap: 8px; }
   .select-row select { flex: 1; }
   .select-row .btn { white-space: nowrap; padding: 9px 12px; }
@@ -312,11 +315,13 @@
 <div class="modal-bg" id="order-bg">
   <div class="modal" style="max-width:480px">
     <button class="close" id="order-close" title="סגירה">✕</button>
-    <h2 class="recipe-title">סידור קטגוריות</h2>
+    <h2 class="recipe-title">ניהול קטגוריות</h2>
     <p style="color:var(--ink-soft);font-size:0.9rem;margin:4px 0 14px">
-      גררי קטגוריה למקום הרצוי ולחצי שמירה.
+      גררי קטגוריה כדי לשנות את הסדר. 🗑 מוחק קטגוריה ריקה.
+      שום דבר לא נשמר עד שלוחצים <strong>שמירה</strong> — ביטול מחזיר הכל.
     </p>
     <ul class="order-list" id="order-list"></ul>
+    <div class="order-note" id="order-note"></div>
     <div class="form-actions">
       <button class="btn primary" id="order-save">שמירה</button>
       <button class="btn" id="order-cancel">ביטול</button>
@@ -412,21 +417,17 @@ function renderCats() {
     parts.push(
       `<button class="cat-chip ${activeCat===key?'active':''}" data-cat="${key}">
          <span>${emoji}</span><span>${label}</span><span class="count">${c}</span>
-         ${(isEditMode() && key !== 'all') ? `<span class="del-cat" data-del="${key}" title="מחיקת קטגוריה">✕</span>` : ''}
        </button>`
     );
   }
   parts.push(`<button class="cat-chip add-cat" id="add-cat-chip">+ קטגוריה חדשה</button>`);
-  parts.push(`<button class="cat-chip add-cat" id="order-cat-chip">↕ סידור קטגוריות</button>`);
+  parts.push(`<button class="cat-chip add-cat" id="order-cat-chip">✎ ניהול קטגוריות</button>`);
   el.innerHTML = parts.join('');
   el.querySelectorAll('.cat-chip[data-cat]').forEach(btn => {
     btn.addEventListener('click', () => { activeCat = btn.dataset.cat; render(); });
   });
   document.getElementById('add-cat-chip').addEventListener('click', () => openCatForm(false));
   document.getElementById('order-cat-chip').addEventListener('click', openOrderForm);
-  el.querySelectorAll('.del-cat').forEach(x => {
-    x.addEventListener('click', (ev) => { ev.stopPropagation(); deleteCategory(x.dataset.del); });
-  });
 }
 
 function renderRecipes() {
@@ -980,11 +981,13 @@ document.getElementById('c-save').addEventListener('click', async () => {
 });
 
 // ===== Reorder categories =====
-let orderDraft = [];     // array of category keys in the draft order
+let orderDraft = [];          // array of category keys in the draft order
+let orderDeleted = new Set(); // keys marked for deletion (applied only on save)
 
 function openOrderForm() {
   if (!isEditMode()) { openAuth(); return; }
   orderDraft = CATEGORIES.filter(c => c[0] !== 'all').map(c => c[0]);
+  orderDeleted = new Set();
   renderOrderList();
   document.getElementById('order-bg').classList.add('open');
 }
@@ -993,17 +996,42 @@ function closeOrderForm() { document.getElementById('order-bg').classList.remove
 function renderOrderList() {
   const byKey = Object.fromEntries(CATEGORIES.map(c => [c[0], c]));
   const ul = document.getElementById('order-list');
+  const counts = {};
+  for (const r of RECIPES) counts[r.cat] = (counts[r.cat] || 0) + 1;
   ul.innerHTML = orderDraft.map(k => {
     const [, label, emoji] = byKey[k];
-    return `<li data-key="${k}"><span class="handle">⠿</span><span>${emoji}</span><span class="o-label">${escapeHtml(label)}</span></li>`;
+    const n = counts[k] || 0;
+    return `<li data-key="${k}">
+      <span class="handle">⠿</span><span>${emoji}</span>
+      <span class="o-label">${escapeHtml(label)}</span>
+      <span class="o-count">${n}</span>
+      <button type="button" class="o-del ${n ? 'locked' : ''}" data-n="${n}" title="מחיקה">🗑</button>
+    </li>`;
   }).join('');
   ul.querySelectorAll('li').forEach(li => li.addEventListener('pointerdown', startOrderDrag));
+  ul.querySelectorAll('.o-del').forEach(b => b.addEventListener('click', () => {
+    const li = b.closest('li');
+    const n = parseInt(b.dataset.n, 10);
+    const label = li.querySelector('.o-label').textContent;
+    if (n > 0) {
+      toast(`ב"${label}" יש ${n} מתכונים — העבירי אותם לקטגוריה אחרת קודם`, 'err');
+      return;
+    }
+    orderDeleted.add(li.dataset.key);
+    orderDraft = orderDraft.filter(k => k !== li.dataset.key);
+    renderOrderList();
+  }));
+  const note = document.getElementById('order-note');
+  note.textContent = orderDeleted.size
+    ? `${orderDeleted.size === 1 ? 'קטגוריה אחת תימחק' : orderDeleted.size + ' קטגוריות יימחקו'} בשמירה (ביטול מחזיר)`
+    : '';
 }
 
 // Drag & drop with pointer events (mouse anywhere on the row; touch via the ⠿ handle so the list can still scroll)
 let orderDrag = null;
 function startOrderDrag(e) {
   if (e.button > 0) return;
+  if (e.target.closest('.o-del')) return;
   if (e.pointerType !== 'mouse' && !e.target.closest('.handle')) return;
   e.preventDefault();
   const li = e.currentTarget;
@@ -1071,12 +1099,17 @@ document.getElementById('order-save').addEventListener('click', async () => {
     const base = Array.isArray(remote) ? remote : categoriesToJson();
     const rank = Object.fromEntries(orderDraft.map((k, i) => [k, i]));
     // Categories added elsewhere in the meantime (not in our draft) keep their place at the end
-    const list = base.slice().sort((a, b) => (rank[a.key] ?? 1e9) - (rank[b.key] ?? 1e9));
-    await ghCommitFile('categories.json', list, sha, 'reorder categories');
+    const list = base
+      .filter(c => !orderDeleted.has(c.key))
+      .sort((a, b) => (rank[a.key] ?? 1e9) - (rank[b.key] ?? 1e9));
+    const msg = orderDeleted.size ? `categories: reorder + delete ${[...orderDeleted].join(', ')}` : 'reorder categories';
+    await ghCommitFile('categories.json', list, sha, msg);
     const sel = document.getElementById('f-cat'); const prev = sel.value;
     setCategories(list); sel.value = prev;
+    if (!sel.value) sel.selectedIndex = 0;
+    if (orderDeleted.has(activeCat)) activeCat = 'all';
     closeOrderForm();
-    toast('הסדר נשמר ✓', 'ok');
+    toast('נשמר ✓', 'ok');
     render();
   } catch (err) {
     console.error(err);
@@ -1085,31 +1118,6 @@ document.getElementById('order-save').addEventListener('click', async () => {
     btn.disabled = false; btn.textContent = 'שמירה';
   }
 });
-
-// ===== Delete category =====
-// Only empty categories can be deleted, so no recipe is ever left without a category.
-async function deleteCategory(key) {
-  const cat = CATEGORIES.find(c => c[0] === key);
-  if (!cat) return;
-  const n = RECIPES.filter(r => r.cat === key).length;
-  if (n > 0) {
-    toast(`יש ${n} מתכונים בקטגוריה "${cat[1]}" — העבירי אותם לקטגוריה אחרת לפני המחיקה`, 'err');
-    return;
-  }
-  if (!confirm(`למחוק את הקטגוריה "${cat[1]}"?`)) return;
-  try {
-    const { json: remote, sha } = await ghFetchFile('categories.json', true);
-    const list = (Array.isArray(remote) ? remote : categoriesToJson()).filter(c => c.key !== key);
-    await ghCommitFile('categories.json', list, sha, `delete category: ${cat[1]}`);
-    setCategories(list);
-    if (activeCat === key) activeCat = 'all';
-    toast('הקטגוריה נמחקה ✓', 'ok');
-    render();
-  } catch (err) {
-    console.error(err);
-    toast('שגיאה: ' + err.message, 'err');
-  }
-}
 
 // Hook edit pencils and add-buttons into the existing render flow
 const origCardHtml = cardHtml;
