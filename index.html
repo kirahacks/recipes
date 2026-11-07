@@ -123,6 +123,13 @@
   .edit-mode .add-recipe-btn { display: inline-flex; }
   .add-recipe-btn:hover { background: var(--accent-soft); }
 
+  /* "Add category" chip + inline button next to the category select */
+  .cat-chip.add-cat { display: none; border-style: dashed; border-color: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .edit-mode .cat-chip.add-cat { display: inline-flex; }
+  .select-row { display: flex; gap: 8px; }
+  .select-row select { flex: 1; }
+  .select-row .btn { white-space: nowrap; padding: 9px 12px; }
+
   /* Form modal */
   .form-row { margin: 0 0 14px; }
   .form-row label { display: block; font-size: 0.85rem; font-weight: 600; color: var(--ink-soft); margin-bottom: 4px; }
@@ -223,7 +230,10 @@
     </div>
     <div class="form-row">
       <label for="f-cat">קטגוריה</label>
-      <select id="f-cat"></select>
+      <div class="select-row">
+        <select id="f-cat"></select>
+        <button type="button" class="btn" id="f-new-cat">+ קטגוריה חדשה</button>
+      </div>
     </div>
     <div class="form-row">
       <label for="f-url">קישור למקור (אופציונלי)</label>
@@ -243,10 +253,45 @@
   </div>
 </div>
 
+<!-- New category modal -->
+<div class="modal-bg" id="cat-bg">
+  <div class="modal" style="max-width:440px">
+    <button class="close" id="cat-close" title="סגירה">✕</button>
+    <h2 class="recipe-title">קטגוריה חדשה</h2>
+    <div class="form-row">
+      <label for="c-label">שם הקטגוריה</label>
+      <input id="c-label" type="text" placeholder="למשל: טבעוני"/>
+    </div>
+    <div class="form-row">
+      <label for="c-emoji">אימוג'י</label>
+      <input id="c-emoji" type="text" maxlength="8" placeholder="🌱" style="max-width:110px"/>
+      <div class="hint">אופציונלי. ברירת מחדל: 🍽️</div>
+    </div>
+    <div class="form-actions">
+      <button class="btn primary" id="c-save">שמירה</button>
+      <button class="btn" id="c-cancel">ביטול</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
-const CATEGORIES = [["all", "הכל", "🍽️", "#6b7280"], ["breads", "לחמים ומאפים", "🍞", "#d97706"], ["salads", "סלטים", "🥗", "#16a34a"], ["soups", "מרקים", "🍲", "#dc2626"], ["rice", "אורז ודגנים", "🍚", "#ca8a04"], ["chicken", "עוף", "🍗", "#ea580c"], ["meat", "בשרים", "🥩", "#b91c1c"], ["meatballs", "קציצות", "🍡", "#7f1d1d"], ["fish", "דגים", "🐟", "#0891b2"], ["pasta", "פסטה ואטריות", "🍝", "#c2410c"], ["eggs_dairy", "פשטידות", "🥧", "#facc15"], ["sauces", "רטבים וממרחים", "🥄", "#9333ea"], ["desserts", "עוגות וקינוחים", "🍰", "#db2777"], ["drinks", "משקאות", "☕", "#7c2d12"], ["other", "שונות", "✨", "#475569"]];
+// Categories: defaults below; if categories.json exists in the repo it replaces them
+// (it's created automatically the first time a category is added from the site).
+const ALL_CAT = ["all", "הכל", "🍽️", "#6b7280"];
+const DEFAULT_CATEGORIES = [["breads", "לחמים ומאפים", "🍞", "#d97706"], ["salads", "סלטים", "🥗", "#16a34a"], ["soups", "מרקים", "🍲", "#dc2626"], ["rice", "אורז ודגנים", "🍚", "#ca8a04"], ["chicken", "עוף", "🍗", "#ea580c"], ["meat", "בשרים", "🥩", "#b91c1c"], ["meatballs", "קציצות", "🍡", "#7f1d1d"], ["fish", "דגים", "🐟", "#0891b2"], ["pasta", "פסטה ואטריות", "🍝", "#c2410c"], ["eggs_dairy", "פשטידות", "🥧", "#facc15"], ["sauces", "רטבים וממרחים", "🥄", "#9333ea"], ["desserts", "עוגות וקינוחים", "🍰", "#db2777"], ["drinks", "משקאות", "☕", "#7c2d12"], ["other", "שונות", "✨", "#475569"]];
+let CATEGORIES = [ALL_CAT, ...DEFAULT_CATEGORIES];
+const NEW_CAT_COLORS = ["#0d9488", "#4f46e5", "#be123c", "#65a30d", "#0369a1", "#a16207", "#7e22ce"];
+
+function setCategories(list) {
+  CATEGORIES = [ALL_CAT, ...list.map(c => [c.key, c.label, c.emoji || '🍽️', c.color || '#475569'])];
+  populateCategoryDropdown();
+}
+function categoriesToJson() {
+  return CATEGORIES.filter(c => c[0] !== 'all')
+    .map(([key, label, emoji, color]) => ({ key, label, emoji, color }));
+}
 let RECIPES = [];
 let activeCat = 'all';
 let query = '';
@@ -255,9 +300,15 @@ let modalOpen = null;
 // Load recipes.json (works on GitHub Pages and any http(s) host)
 async function loadRecipes() {
   try {
-    const res = await fetch('recipes.json', { cache: 'no-cache' });
+    const [res, catRes] = await Promise.all([
+      fetch('recipes.json', { cache: 'no-cache' }),
+      fetch('categories.json', { cache: 'no-cache' }).catch(() => null),
+    ]);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     RECIPES = await res.json();
+    if (catRes && catRes.ok) {
+      try { setCategories(await catRes.json()); } catch (e) { console.warn('categories.json invalid', e); }
+    }
     render();
   } catch (err) {
     document.getElementById('content').innerHTML =
@@ -294,17 +345,20 @@ function renderCats() {
   const parts = [];
   for (const [key, label, emoji] of CATEGORIES) {
     const c = counts[key] || 0;
-    if (key !== 'all' && c === 0) continue;
+    // Empty categories are hidden for viewers but shown in edit mode so you can add to them
+    if (key !== 'all' && c === 0 && !isEditMode()) continue;
     parts.push(
       `<button class="cat-chip ${activeCat===key?'active':''}" data-cat="${key}">
          <span>${emoji}</span><span>${label}</span><span class="count">${c}</span>
        </button>`
     );
   }
+  parts.push(`<button class="cat-chip add-cat" id="add-cat-chip">+ קטגוריה חדשה</button>`);
   el.innerHTML = parts.join('');
-  el.querySelectorAll('.cat-chip').forEach(btn => {
+  el.querySelectorAll('.cat-chip[data-cat]').forEach(btn => {
     btn.addEventListener('click', () => { activeCat = btn.dataset.cat; render(); });
   });
+  document.getElementById('add-cat-chip').addEventListener('click', () => openCatForm(false));
 }
 
 function renderRecipes() {
@@ -319,8 +373,9 @@ function renderRecipes() {
     const byCat = {};
     for (const r of recs) (byCat[r.cat] = byCat[r.cat] || []).push(r);
     for (const [key, label, emoji] of CATEGORIES) {
-      const group = byCat[key];
-      if (!group || group.length === 0) continue;
+      if (key === 'all') continue;
+      const group = byCat[key] || [];
+      if (group.length === 0 && !isEditMode()) continue;
       html += `<section>
         <div class="section-title">
           <span class="emoji">${emoji}</span><h2>${label}</h2><span class="num">(${group.length})</span>
@@ -484,27 +539,32 @@ function b64ToUtf8(s) {
   return new TextDecoder().decode(bytes);
 }
 
-// GitHub API: fetch current recipes.json file (returns { content, sha })
-async function ghFetchRecipesFile() {
+// GitHub API: fetch a JSON file from the repo (returns { json, sha }).
+// With allowMissing, a 404 returns { json: null, sha: null } instead of throwing.
+async function ghFetchFile(path, allowMissing = false) {
   const { owner, repo } = detectRepo();
   if (!owner || !repo) throw new Error('לא מצליח לזהות את שם המאגר ב-GitHub');
-  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/recipes.json`, {
-    headers: { 'Authorization': `Bearer ${getToken()}`, 'Accept': 'application/vnd.github+json' }
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+    headers: { 'Authorization': `Bearer ${getToken()}`, 'Accept': 'application/vnd.github+json' },
+    cache: 'no-store'
   });
+  if (res.status === 404 && allowMissing) return { json: null, sha: null };
   if (!res.ok) throw new Error('GET נכשל: ' + res.status);
   const j = await res.json();
   return { json: JSON.parse(b64ToUtf8(j.content)), sha: j.sha };
 }
+function ghFetchRecipesFile() { return ghFetchFile('recipes.json'); }
+function ghCommitRecipesFile(newJson, sha, message) { return ghCommitFile('recipes.json', newJson, sha, message); }
 
-// GitHub API: commit a new recipes.json
-async function ghCommitRecipesFile(newJson, sha, message) {
+// GitHub API: commit a JSON file (sha = null creates a new file)
+async function ghCommitFile(path, newJson, sha, message) {
   const { owner, repo } = detectRepo();
   const body = {
-    message: message || 'update recipes',
+    message: message || 'update ' + path,
     content: utf8ToB64(JSON.stringify(newJson, null, 2)),
-    sha: sha,
   };
-  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/recipes.json`, {
+  if (sha) body.sha = sha;
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
     method: 'PUT',
     headers: {
       'Authorization': `Bearer ${getToken()}`,
@@ -750,6 +810,63 @@ document.getElementById('f-delete').addEventListener('click', async () => {
     toast('שגיאה: ' + err.message, 'err');
   } finally {
     btn.disabled = false; btn.textContent = 'מחיקה';
+  }
+});
+
+// ===== New category modal =====
+let catReturnToForm = false;
+
+function openCatForm(fromRecipeForm) {
+  if (!isEditMode()) { openAuth(); return; }
+  catReturnToForm = !!fromRecipeForm;
+  document.getElementById('c-label').value = '';
+  document.getElementById('c-emoji').value = '';
+  document.getElementById('cat-bg').classList.add('open');
+  document.getElementById('c-label').focus();
+}
+function closeCatForm() {
+  document.getElementById('cat-bg').classList.remove('open');
+}
+document.getElementById('f-new-cat').addEventListener('click', () => openCatForm(true));
+document.getElementById('cat-close').addEventListener('click', closeCatForm);
+document.getElementById('c-cancel').addEventListener('click', closeCatForm);
+document.getElementById('cat-bg').addEventListener('click', (e) => {
+  if (e.target.id === 'cat-bg') closeCatForm();
+});
+
+document.getElementById('c-save').addEventListener('click', async () => {
+  const label = document.getElementById('c-label').value.trim();
+  const emoji = document.getElementById('c-emoji').value.trim() || '🍽️';
+  if (!label) { toast('צריך לתת שם לקטגוריה', 'err'); return; }
+  if (CATEGORIES.some(c => c[1] === label)) { toast('כבר קיימת קטגוריה בשם הזה', 'err'); return; }
+
+  const btn = document.getElementById('c-save');
+  btn.disabled = true; btn.textContent = '⏳ שומר…';
+  try {
+    // Start from the repo's categories.json if it exists (it may be newer than ours),
+    // otherwise from the current list — the first save creates the file.
+    const { json: remote, sha } = await ghFetchFile('categories.json', true);
+    const list = Array.isArray(remote) ? remote : categoriesToJson();
+    if (list.some(c => c.label === label)) throw new Error('כבר קיימת קטגוריה בשם הזה');
+    const key = 'c_' + Date.now().toString(36);
+    const color = NEW_CAT_COLORS[list.length % NEW_CAT_COLORS.length];
+    list.push({ key, label, emoji, color });
+    await ghCommitFile('categories.json', list, sha, `add category: ${label}`);
+
+    // Preserve the recipe form's current selection while the dropdown is rebuilt
+    const sel = document.getElementById('f-cat');
+    const prevSel = sel.value;
+    setCategories(list);
+    sel.value = catReturnToForm ? key : prevSel;
+
+    closeCatForm();
+    toast('הקטגוריה נוספה ✓', 'ok');
+    render();
+  } catch (err) {
+    console.error(err);
+    toast('שגיאה: ' + err.message, 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = 'שמירה';
   }
 });
 
