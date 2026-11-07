@@ -73,7 +73,7 @@
   .modal { background: var(--card); max-width: 720px; width: 100%; border-radius: 16px; box-shadow: var(--shadow-lg); padding: 24px 28px 28px; position: relative; margin-bottom: 5vh; }
   .modal .close { position: absolute; top: 12px; inset-inline-start: 14px; background: var(--bg-soft); border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 1.1rem; cursor: pointer; color: var(--ink-soft); transition: background 0.12s; }
   .modal .close:hover { background: var(--accent-soft); color: var(--accent); }
-  .modal h2.recipe-title { margin: 0 0 4px; font-size: 1.55rem; color: var(--accent); padding-inline-end: 36px; line-height: 1.25; }
+  .modal h2.recipe-title { margin: 0 0 4px; font-size: 1.55rem; color: var(--accent); padding-inline-start: 40px; line-height: 1.25; }
   .modal .recipe-meta { display: flex; flex-wrap: wrap; gap: 10px; color: var(--ink-faint); font-size: 0.85rem; margin-bottom: 18px; }
   .modal .recipe-meta .pill { background: var(--bg-soft); padding: 2px 10px; border-radius: 999px; }
   .modal .external-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--accent); color: white; text-decoration: none; padding: 10px 18px; border-radius: 10px; font-weight: 600; margin: 8px 8px 8px 0; transition: background 0.12s; }
@@ -126,6 +126,23 @@
   /* "Add category" chip + inline button next to the category select */
   .cat-chip.add-cat { display: none; border-style: dashed; border-color: var(--accent-soft); color: var(--accent); font-weight: 600; }
   .edit-mode .cat-chip.add-cat { display: inline-flex; }
+  .cat-chip .del-cat {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; border-radius: 50%; font-size: 0.7rem;
+    background: rgba(220,38,38,0.12); color: var(--err); margin-inline-start: 2px;
+  }
+  .cat-chip .del-cat:hover { background: var(--err); color: white; }
+  .cat-chip.active .del-cat { background: rgba(255,255,255,0.3); color: white; }
+  .emoji-picker { border: 1.5px solid var(--border); border-radius: 10px; padding: 8px; margin-top: 8px; background: var(--bg-soft); }
+  .emoji-picker input { margin-bottom: 8px; }
+  .emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 4px; max-height: 190px; overflow-y: auto; }
+  .emoji-grid button {
+    font-size: 1.35rem; background: white; border: 1.5px solid transparent; border-radius: 8px;
+    height: 38px; cursor: pointer; padding: 0; line-height: 1;
+  }
+  .emoji-grid button:hover { border-color: var(--accent-soft); }
+  .emoji-grid button.sel { border-color: var(--accent); background: var(--accent-soft); }
+  .emoji-grid .none { grid-column: 1 / -1; color: var(--ink-faint); font-size: 0.85rem; text-align: center; padding: 10px; }
   .select-row { display: flex; gap: 8px; }
   .select-row select { flex: 1; }
   .select-row .btn { white-space: nowrap; padding: 9px 12px; }
@@ -265,7 +282,11 @@
     <div class="form-row">
       <label for="c-emoji">אימוג'י</label>
       <input id="c-emoji" type="text" maxlength="8" placeholder="🌱" style="max-width:110px"/>
-      <div class="hint">אופציונלי. ברירת מחדל: 🍽️</div>
+      <div class="hint">בחרי מהרשימה או הקלידי בעצמך. אופציונלי, ברירת מחדל: 🍽️</div>
+      <div class="emoji-picker">
+        <input id="emoji-search" type="text" placeholder="🔍 חיפוש אימוג'י… למשל: גבינה, ירק, cake"/>
+        <div class="emoji-grid" id="emoji-grid"></div>
+      </div>
     </div>
     <div class="form-actions">
       <button class="btn primary" id="c-save">שמירה</button>
@@ -350,6 +371,7 @@ function renderCats() {
     parts.push(
       `<button class="cat-chip ${activeCat===key?'active':''}" data-cat="${key}">
          <span>${emoji}</span><span>${label}</span><span class="count">${c}</span>
+         ${(isEditMode() && key !== 'all') ? `<span class="del-cat" data-del="${key}" title="מחיקת קטגוריה">✕</span>` : ''}
        </button>`
     );
   }
@@ -359,6 +381,9 @@ function renderCats() {
     btn.addEventListener('click', () => { activeCat = btn.dataset.cat; render(); });
   });
   document.getElementById('add-cat-chip').addEventListener('click', () => openCatForm(false));
+  el.querySelectorAll('.del-cat').forEach(x => {
+    x.addEventListener('click', (ev) => { ev.stopPropagation(); deleteCategory(x.dataset.del); });
+  });
 }
 
 function renderRecipes() {
@@ -689,7 +714,9 @@ function openFormForAdd(cat) {
   formContext = { mode: 'add', cat: cat };
   document.getElementById('form-title').textContent = 'מתכון חדש';
   document.getElementById('f-title').value = '';
-  document.getElementById('f-cat').value = cat || 'other';
+  const sel = document.getElementById('f-cat');
+  sel.value = cat || 'other';
+  if (!sel.value) sel.selectedIndex = 0;  // e.g. "other" was deleted
   document.getElementById('f-url').value = '';
   document.getElementById('f-content').value = '';
   document.getElementById('f-delete').style.display = 'none';
@@ -813,6 +840,43 @@ document.getElementById('f-delete').addEventListener('click', async () => {
   }
 });
 
+// ===== Emoji picker (food-focused, searchable in Hebrew and English) =====
+const EMOJIS = [
+  ['🍽️','צלחת ארוחה כללי plate meal'],['🥘','סיר תבשיל פאייה stew pot'],['🍲','מרק סיר soup'],['🥣','קערה דייסה גרנולה בוקר bowl cereal breakfast'],
+  ['🥗','סלט ירוק salad'],['🥙','פיתה שווארמה פלאפל pita falafel'],['🧆','פלאפל כדורים falafel'],['🌯','טורטיה בוריטו ראפ wrap burrito'],['🌮','טאקו taco'],
+  ['🥪','כריך סנדוויץ sandwich'],['🍔','המבורגר burger'],['🍕','פיצה pizza'],['🌭','נקניקיה hot dog'],['🍟','צ׳יפס טוגן fries'],
+  ['🍞','לחם bread'],['🥖','באגט לחם baguette bread'],['🥐','קרואסון מאפה croissant pastry'],['🥯','בייגל bagel'],['🫓','פיתה לאפה מצה flatbread'],['🥨','בייגלה pretzel'],
+  ['🧇','וופל waffle'],['🥞','פנקייק חביתיות pancake'],['🍳','ביצה מטבח בישול egg cooking'],['🥚','ביצה egg'],['🧀','גבינה cheese dairy'],['🥛','חלב מוצרי חלב milk dairy'],['🧈','חמאה butter'],
+  ['🍗','עוף כרעיים chicken'],['🍖','בשר עצם meat'],['🥩','סטייק בשר steak meat'],['🥓','בייקון bacon'],['🍡','שיפוד קציצות skewer'],['🍢','שיפוד skewer'],
+  ['🐟','דג fish'],['🐠','דג fish'],['🍣','סושי sushi'],['🍤','שרימפס tempura shrimp'],['🦐','שרימפס shrimp seafood'],['🦑','קלמרי calamari'],['🦀','סרטן crab'],
+  ['🍝','פסטה ספגטי pasta spaghetti'],['🍜','מרק אטריות ראמן noodles ramen'],['🍚','אורז rice'],['🍛','קארי אורז curry'],['🍙','אורז כדור onigiri'],['🥟','כיסונים דים סאם dumpling'],['🫕','פונדו fondue'],
+  ['🥧','פאי פשטידה קיש pie quiche'],['🎂','עוגה יום הולדת birthday cake'],['🍰','עוגה פרוסה cake'],['🧁','קאפקייק מאפין cupcake muffin'],['🍪','עוגייה עוגיות cookie'],
+  ['🍩','סופגנייה דונאט donut'],['🍫','שוקולד chocolate'],['🍬','סוכריה ממתק candy'],['🍭','סוכריה על מקל lollipop'],['🍮','פודינג קרם ברולה pudding flan'],['🍦','גלידה ice cream'],['🍨','גלידה קינוח dessert'],['🍯','דבש honey'],
+  ['🍎','תפוח apple fruit פרי'],['🍏','תפוח ירוק apple'],['🍐','אגס pear'],['🍊','תפוז orange'],['🍋','לימון lemon'],['🍌','בננה banana'],['🍉','אבטיח watermelon'],
+  ['🍇','ענבים grapes'],['🍓','תות strawberry'],['🫐','אוכמניות blueberry'],['🍒','דובדבן cherry'],['🍑','אפרסק peach'],['🥭','מנגו mango'],['🍍','אננס pineapple'],['🥥','קוקוס coconut'],['🥝','קיווי kiwi'],
+  ['🍅','עגבנייה tomato ירק'],['🍆','חציל eggplant'],['🥑','אבוקדו avocado'],['🥦','ברוקולי broccoli ירק'],['🥬','חסה עלים lettuce greens'],['🥒','מלפפון cucumber'],['🌶️','פלפל חריף chili spicy'],['🫑','פלפל pepper'],
+  ['🌽','תירס corn'],['🥕','גזר carrot'],['🧄','שום garlic'],['🧅','בצל onion'],['🥔','תפוח אדמה potato'],['🍠','בטטה sweet potato'],['🍄','פטריות mushroom'],['🫘','שעועית קטניות beans legumes'],['🥜','בוטנים אגוזים peanut nuts'],['🌰','ערמון chestnut'],
+  ['🌱','טבעוני צמחוני נבט vegan vegetarian plant'],['🌿','עשבי תיבול herbs'],['🧂','מלח תבלינים salt spices'],['🫒','זית שמן זית olive'],['🥫','שימורים רוטב can sauce'],['🥄','כף רוטב spoon sauce'],
+  ['☕','קפה coffee drink משקה'],['🍵','תה tea'],['🧃','מיץ juice'],['🥤','שתייה משקה drink'],['🧋','בועות bubble tea'],['🍷','יין wine'],['🍺','בירה beer'],['🍸','קוקטייל cocktail'],['🥂','שמפניה חגיגה cheers'],
+  ['🎉','חג מסיבה party holiday'],['🕯️','שבת נר shabbat candle'],['❤️','אהוב מועדף favorite love'],['⭐','מומלץ כוכב star favorite'],['⏱️','מהיר זמן quick fast'],['👶','ילדים תינוק kids baby'],['🔥','גריל אש מנגל grill bbq'],['❄️','קר מקפיא frozen cold'],['✨','שונות misc'],
+];
+
+function renderEmojiGrid() {
+  const q = document.getElementById('emoji-search').value.trim().toLowerCase();
+  const current = document.getElementById('c-emoji').value.trim();
+  const list = q ? EMOJIS.filter(([, kw]) => kw.toLowerCase().includes(q)) : EMOJIS;
+  const grid = document.getElementById('emoji-grid');
+  grid.innerHTML = list.length
+    ? list.map(([e, kw]) => `<button type="button" title="${kw.split(' ')[0]}" class="${e === current ? 'sel' : ''}">${e}</button>`).join('')
+    : `<div class="none">לא נמצא — אפשר להקליד אימוג'י ישירות בשדה למעלה</div>`;
+  grid.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    document.getElementById('c-emoji').value = b.textContent;
+    renderEmojiGrid();
+  }));
+}
+document.getElementById('emoji-search').addEventListener('input', renderEmojiGrid);
+document.getElementById('c-emoji').addEventListener('input', renderEmojiGrid);
+
 // ===== New category modal =====
 let catReturnToForm = false;
 
@@ -821,6 +885,8 @@ function openCatForm(fromRecipeForm) {
   catReturnToForm = !!fromRecipeForm;
   document.getElementById('c-label').value = '';
   document.getElementById('c-emoji').value = '';
+  document.getElementById('emoji-search').value = '';
+  renderEmojiGrid();
   document.getElementById('cat-bg').classList.add('open');
   document.getElementById('c-label').focus();
 }
@@ -869,6 +935,31 @@ document.getElementById('c-save').addEventListener('click', async () => {
     btn.disabled = false; btn.textContent = 'שמירה';
   }
 });
+
+// ===== Delete category =====
+// Only empty categories can be deleted, so no recipe is ever left without a category.
+async function deleteCategory(key) {
+  const cat = CATEGORIES.find(c => c[0] === key);
+  if (!cat) return;
+  const n = RECIPES.filter(r => r.cat === key).length;
+  if (n > 0) {
+    toast(`יש ${n} מתכונים בקטגוריה "${cat[1]}" — העבירי אותם לקטגוריה אחרת לפני המחיקה`, 'err');
+    return;
+  }
+  if (!confirm(`למחוק את הקטגוריה "${cat[1]}"?`)) return;
+  try {
+    const { json: remote, sha } = await ghFetchFile('categories.json', true);
+    const list = (Array.isArray(remote) ? remote : categoriesToJson()).filter(c => c.key !== key);
+    await ghCommitFile('categories.json', list, sha, `delete category: ${cat[1]}`);
+    setCategories(list);
+    if (activeCat === key) activeCat = 'all';
+    toast('הקטגוריה נמחקה ✓', 'ok');
+    render();
+  } catch (err) {
+    console.error(err);
+    toast('שגיאה: ' + err.message, 'err');
+  }
+}
 
 // Hook edit pencils and add-buttons into the existing render flow
 const origCardHtml = cardHtml;
