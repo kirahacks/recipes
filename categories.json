@@ -70,11 +70,5 @@
     "label": "עוגות וקינוחים",
     "emoji": "🍰",
     "color": "#db2777"
-  },
-  {
-    "key": "drinks",
-    "label": "משקאות",
-    "emoji": "☕",
-    "color": "#7c2d12"
   }
 ]
