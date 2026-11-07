@@ -1,0 +1,80 @@
+[
+  {
+    "key": "breads",
+    "label": "לחמים ומאפים",
+    "emoji": "🍞",
+    "color": "#d97706"
+  },
+  {
+    "key": "salads",
+    "label": "סלטים",
+    "emoji": "🥗",
+    "color": "#16a34a"
+  },
+  {
+    "key": "soups",
+    "label": "מרקים",
+    "emoji": "🍲",
+    "color": "#dc2626"
+  },
+  {
+    "key": "rice",
+    "label": "אורז ודגנים",
+    "emoji": "🍚",
+    "color": "#ca8a04"
+  },
+  {
+    "key": "chicken",
+    "label": "עוף",
+    "emoji": "🍗",
+    "color": "#ea580c"
+  },
+  {
+    "key": "meat",
+    "label": "בשרים",
+    "emoji": "🥩",
+    "color": "#b91c1c"
+  },
+  {
+    "key": "meatballs",
+    "label": "קציצות",
+    "emoji": "🍡",
+    "color": "#7f1d1d"
+  },
+  {
+    "key": "fish",
+    "label": "דגים",
+    "emoji": "🐟",
+    "color": "#0891b2"
+  },
+  {
+    "key": "pasta",
+    "label": "פסטה ואטריות",
+    "emoji": "🍝",
+    "color": "#c2410c"
+  },
+  {
+    "key": "eggs_dairy",
+    "label": "פשטידות",
+    "emoji": "🥧",
+    "color": "#facc15"
+  },
+  {
+    "key": "sauces",
+    "label": "רטבים וממרחים",
+    "emoji": "🥄",
+    "color": "#9333ea"
+  },
+  {
+    "key": "desserts",
+    "label": "עוגות וקינוחים",
+    "emoji": "🍰",
+    "color": "#db2777"
+  },
+  {
+    "key": "drinks",
+    "label": "משקאות",
+    "emoji": "☕",
+    "color": "#7c2d12"
+  }
+]
