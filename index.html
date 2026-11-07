@@ -143,6 +143,19 @@
   .emoji-grid button:hover { border-color: var(--accent-soft); }
   .emoji-grid button.sel { border-color: var(--accent); background: var(--accent-soft); }
   .emoji-grid .none { grid-column: 1 / -1; color: var(--ink-faint); font-size: 0.85rem; text-align: center; padding: 10px; }
+  .order-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .order-list li {
+    display: flex; align-items: center; gap: 10px; background: var(--bg-soft);
+    border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px;
+  }
+  .order-list li.moved { border-color: var(--accent); background: var(--accent-soft); }
+  .order-list .o-label { flex: 1; font-weight: 600; }
+  .order-list .o-btn {
+    width: 32px; height: 32px; border-radius: 8px; border: 1.5px solid var(--border);
+    background: white; cursor: pointer; font-size: 0.95rem; padding: 0; color: var(--ink-soft);
+  }
+  .order-list .o-btn:hover:not([disabled]) { border-color: var(--accent); color: var(--accent); }
+  .order-list .o-btn[disabled] { opacity: 0.3; cursor: default; }
   .select-row { display: flex; gap: 8px; }
   .select-row select { flex: 1; }
   .select-row .btn { white-space: nowrap; padding: 9px 12px; }
@@ -295,6 +308,22 @@
   </div>
 </div>
 
+<!-- Reorder categories modal -->
+<div class="modal-bg" id="order-bg">
+  <div class="modal" style="max-width:480px">
+    <button class="close" id="order-close" title="סגירה">✕</button>
+    <h2 class="recipe-title">סידור קטגוריות</h2>
+    <p style="color:var(--ink-soft);font-size:0.9rem;margin:4px 0 14px">
+      הזיזי עם החצים. ⇈ מעביר להתחלה, ⇊ לסוף. הסדר כאן קובע את סדר הכפתורים והחלקים בעמוד.
+    </p>
+    <ul class="order-list" id="order-list"></ul>
+    <div class="form-actions">
+      <button class="btn primary" id="order-save">שמירה</button>
+      <button class="btn" id="order-cancel">ביטול</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -376,11 +405,13 @@ function renderCats() {
     );
   }
   parts.push(`<button class="cat-chip add-cat" id="add-cat-chip">+ קטגוריה חדשה</button>`);
+  parts.push(`<button class="cat-chip add-cat" id="order-cat-chip">↕ סידור קטגוריות</button>`);
   el.innerHTML = parts.join('');
   el.querySelectorAll('.cat-chip[data-cat]').forEach(btn => {
     btn.addEventListener('click', () => { activeCat = btn.dataset.cat; render(); });
   });
   document.getElementById('add-cat-chip').addEventListener('click', () => openCatForm(false));
+  document.getElementById('order-cat-chip').addEventListener('click', openOrderForm);
   el.querySelectorAll('.del-cat').forEach(x => {
     x.addEventListener('click', (ev) => { ev.stopPropagation(); deleteCategory(x.dataset.del); });
   });
@@ -927,6 +958,74 @@ document.getElementById('c-save').addEventListener('click', async () => {
 
     closeCatForm();
     toast('הקטגוריה נוספה ✓', 'ok');
+    render();
+  } catch (err) {
+    console.error(err);
+    toast('שגיאה: ' + err.message, 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = 'שמירה';
+  }
+});
+
+// ===== Reorder categories =====
+let orderDraft = [];     // array of category keys in the draft order
+let orderMovedKey = null;
+
+function openOrderForm() {
+  if (!isEditMode()) { openAuth(); return; }
+  orderDraft = CATEGORIES.filter(c => c[0] !== 'all').map(c => c[0]);
+  orderMovedKey = null;
+  renderOrderList();
+  document.getElementById('order-bg').classList.add('open');
+}
+function closeOrderForm() { document.getElementById('order-bg').classList.remove('open'); }
+
+function moveCat(i, to) {
+  to = Math.max(0, Math.min(orderDraft.length - 1, to));
+  if (to === i) return;
+  const [k] = orderDraft.splice(i, 1);
+  orderDraft.splice(to, 0, k);
+  orderMovedKey = k;
+  renderOrderList();
+}
+
+function renderOrderList() {
+  const byKey = Object.fromEntries(CATEGORIES.map(c => [c[0], c]));
+  const last = orderDraft.length - 1;
+  const ul = document.getElementById('order-list');
+  ul.innerHTML = orderDraft.map((k, i) => {
+    const [, label, emoji] = byKey[k];
+    return `<li class="${k === orderMovedKey ? 'moved' : ''}">
+      <span>${emoji}</span><span class="o-label">${escapeHtml(label)}</span>
+      <button class="o-btn" data-i="${i}" data-to="0" title="להתחלה" ${i === 0 ? 'disabled' : ''}>⇈</button>
+      <button class="o-btn" data-i="${i}" data-to="${i - 1}" title="למעלה" ${i === 0 ? 'disabled' : ''}>↑</button>
+      <button class="o-btn" data-i="${i}" data-to="${i + 1}" title="למטה" ${i === last ? 'disabled' : ''}>↓</button>
+      <button class="o-btn" data-i="${i}" data-to="${last}" title="לסוף" ${i === last ? 'disabled' : ''}>⇊</button>
+    </li>`;
+  }).join('');
+  ul.querySelectorAll('.o-btn').forEach(b => b.addEventListener('click', () =>
+    moveCat(parseInt(b.dataset.i, 10), parseInt(b.dataset.to, 10))));
+}
+
+document.getElementById('order-close').addEventListener('click', closeOrderForm);
+document.getElementById('order-cancel').addEventListener('click', closeOrderForm);
+document.getElementById('order-bg').addEventListener('click', (e) => {
+  if (e.target.id === 'order-bg') closeOrderForm();
+});
+document.getElementById('order-save').addEventListener('click', async () => {
+  const btn = document.getElementById('order-save');
+  btn.disabled = true; btn.textContent = '⏳ שומר…';
+  try {
+    const { json: remote, sha } = await ghFetchFile('categories.json', true);
+    const base = Array.isArray(remote) ? remote : categoriesToJson();
+    const rank = Object.fromEntries(orderDraft.map((k, i) => [k, i]));
+    // Categories added elsewhere in the meantime (not in our draft) keep their place at the end
+    const list = base.slice().sort((a, b) => (rank[a.key] ?? 1e9) - (rank[b.key] ?? 1e9));
+    await ghCommitFile('categories.json', list, sha, 'reorder categories');
+    const sel = document.getElementById('f-cat'); const prev = sel.value;
+    setCategories(list); sel.value = prev;
+    closeOrderForm();
+    toast('הסדר נשמר ✓', 'ok');
     render();
   } catch (err) {
     console.error(err);
